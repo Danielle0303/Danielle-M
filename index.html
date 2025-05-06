@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Logopädie Terminbuchung</title>
+  <link href='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/index.global.min.css' rel='stylesheet' />
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; max-width: 800px; margin: auto; }
+    h1 { text-align: center; }
+    form, .bookings { margin-top: 20px; }
+    form { display: flex; flex-direction: column; gap: 10px; }
+    label { font-weight: bold; }
+    input, select, button { padding: 8px; font-size: 1em; }
+    .message { margin-top: 10px; font-weight: bold; }
+    #calendar { margin-top: 30px; }
+    .fc-day-disabled { background: #f8f8f8; }
+  </style>
+</head>
+<body>
+  <h1>Terminbuchung – Logopädie</h1>
+
+  <div id='calendar'></div>
+
+  <form id="bookingForm" style="display:none;">
+    <label for="name">Name:</label>
+    <input type="text" id="name" required>
+
+    <label for="date">Datum:</label>
+    <input type="date" id="date" readonly>
+
+    <label for="time">Uhrzeit:</label>
+    <select id="time" required></select>
+
+    <button type="submit">Termin buchen</button>
+    <div class="message" id="message"></div>
+  </form>
+
+  <div class="bookings">
+    <h2>Buchungsübersicht</h2>
+    <div id="bookingList"></div>
+  </div>
+
+  <script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/index.global.min.js'></script>
+  <script>
+    const form = document.getElementById("bookingForm");
+    const timeSelect = document.getElementById("time");
+    const message = document.getElementById("message");
+    const bookingList = document.getElementById("bookingList");
+    const dateField = document.getElementById("date");
+
+    const pauseTimes = {
+      1: ["12:30"],
+      2: ["12:30"],
+      3: ["12:30"],
+      5: ["12:30"]
+    };
+
+    const customDays = {
+      '2024-06-30': ["16:30", "17:00", "17:30"],
+      '2024-07-01': ["16:30", "17:00", "17:30"],
+      '2024-07-02': ["14:30", "15:00", "15:30", "16:00", "16:30", "17:00", "17:30"],
+      '2024-07-04': ["09:00", "09:30", "10:00", "10:30", "11:00", "11:30", "12:00", "13:00", "13:30", "14:00", "14:30", "15:00", "15:30"],
+      '2024-07-07': ["16:30", "17:00", "17:30"],
+      '2024-07-08': ["16:30", "17:00", "17:30"],
+      '2024-07-09': ["14:30", "15:00", "15:30", "16:00", "16:30", "17:00", "17:30"],
+      '2024-07-11': ["09:00", "09:30", "10:00", "10:30", "11:00", "11:30", "12:00", "13:00", "13:30", "14:00", "14:30", "15:00", "15:30"]
+    };
+
+    const closedDates = [
+      '2024-07-03', '2024-07-10',
+      ...Array.from({length: 14}, (_, i) => {
+        const day = i + 4;
+        return `2024-08-${day.toString().padStart(2, '0')}`;
+      })
+    ];
+
+    const slotsByDay = {
+      1: ["09:00", "09:30", "10:00", "10:30", "11:00", "11:30", "12:00", "13:30", "14:00", "14:30", "15:00", "15:30", "16:00", "16:30", "17:00", "17:30"],
+      2: ["09:00", "09:30", "10:00", "10:30", "11:00", "11:30", "12:00", "13:30", "14:00", "14:30", "15:00", "15:30", "16:00", "16:30", "17:00", "17:30"],
+      3: ["09:00", "09:30", "10:00", "10:30", "11:00", "11:30", "12:00", "13:30", "14:00", "14:30", "15:00", "15:30", "16:00", "16:30", "17:00", "17:30"],
+      4: [],
+      5: ["09:00", "09:30", "10:00", "10:30", "11:00", "11:30", "12:00", "13:00", "13:30", "14:00", "14:30", "15:00", "15:30"]
+    };
+
+    function getBookings() {
+      const stored = localStorage.getItem("bookings");
+      return stored ? JSON.parse(stored) : [];
+    }
+
+    function saveBooking(booking) {
+      const bookings = getBookings();
+      bookings.push(booking);
+      localStorage.setItem("bookings", JSON.stringify(bookings));
+    }
+
+    function renderBookings() {
+      const bookings = getBookings();
+      bookingList.innerHTML = bookings.map(b => `<div>${b.date} – ${b.time} – ${b.name}</div>`).join("");
+    }
+
+    function updateTimeOptions(dateStr) {
+      timeSelect.innerHTML = "";
+      const date = new Date(dateStr);
+      const day = date.getDay();
+      if (closedDates.includes(dateStr)) return;
+
+      const custom = customDays[dateStr];
+      const slots = custom || slotsByDay[day] || [];
+      const pauses = pauseTimes[day] || [];
+
+      const bookings = getBookings().filter(b => b.date === dateStr);
+      const bookedSlots = bookings.map(b => b.time);
+
+      const available = slots.filter(slot => !bookedSlots.includes(slot) && !pauses.includes(slot));
+
+      if (available.length === 0) {
+        const option = document.createElement("option");
+        option.textContent = "Keine Termine verfügbar oder geschlossen";
+        option.disabled = true;
+        timeSelect.appendChild(option);
+      } else {
+        available.forEach(time => {
+          const option = document.createElement("option");
+          option.value = time;
+          option.textContent = time;
+          timeSelect.appendChild(option);
+        });
+      }
+    }
+
+    form.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const name = document.getElementById("name").value;
+      const date = dateField.value;
+      const time = timeSelect.value;
+
+      const booking = { name, date, time };
+      saveBooking(booking);
+      message.textContent = `Termin für ${name} am ${date} um ${time} gebucht.`;
+      form.reset();
+      form.style.display = 'none';
+      calendar.refetchEvents();
+      renderBookings();
+    });
+
+    renderBookings();
+
+    const calendarEl = document.getElementById('calendar');
+    const calendar = new FullCalendar.Calendar(calendarEl, {
+      initialView: 'dayGridMonth',
+      locale: 'de',
+      selectable: true,
+      validRange: {
+        start: '2024-06-30',
+        end: '2024-09-01'
+      },
+      dateClick: function(info) {
+        if (closedDates.includes(info.dateStr)) {
+          alert("An diesem Tag ist die Praxis geschlossen.");
+          return;
+        }
+        const day = new Date(info.dateStr).getDay();
+        const custom = customDays[info.dateStr];
+        if (!custom && (!slotsByDay[day] || slotsByDay[day].length === 0)) {
+          alert("An diesem Tag ist die Praxis geschlossen.");
+          return;
+        }
+        dateField.value = info.dateStr;
+        updateTimeOptions(info.dateStr);
+        form.style.display = 'block';
+      },
+      events: getBookings().map(b => ({ title: `${b.name} (${b.time})`, start: `${b.date}T${b.time}:00` }))
+    });
+    calendar.render();
+  </script>
+</body>
+</html>
